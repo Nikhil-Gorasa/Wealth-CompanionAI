@@ -1,15 +1,32 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { db } from '@/lib/db';
+import { RowDataPacket } from 'mysql2';
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
+interface UserProfile extends RowDataPacket {
+  id: number;
+  clerk_id: string;
+  monthly_income: number;
+  monthly_expenses: number;
+  financial_goal: string;
+  risk_tolerance: string;
+  investment_experience: string;
+  existing_investments: string;
+  preferred_investment_types: string;
+}
+
+// Initialize Gemini with the API key
+const GEMINI_API_KEY = 'AIzaSyAY50OhvTmvBnnOrBh24l2LOHfQZurGxgg';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export async function POST(req: Request) {
   try {
-    const { userId } = auth();
+    console.log('Received chat request');
+    const { userId } = await auth();
     
     if (!userId) {
+      console.log('No user ID found');
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
@@ -17,32 +34,162 @@ export async function POST(req: Request) {
     const { message } = body;
 
     if (!message) {
+      console.log('No message provided');
       return new NextResponse('Message is required', { status: 400 });
     }
 
-    // Initialize the model
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    console.log('Processing message for user:', userId);
 
-    // Create a prompt that emphasizes financial education and Indian context
-    const prompt = `You are Invest Sathi, an AI-powered financial assistant helping Indian investors. 
-    The user's question is: "${message}"
-    
-    Please provide a clear, concise, and educational response that:
-    1. Uses simple language and real-world examples
-    2. Relates to the Indian financial context
-    3. Includes relevant numbers and statistics when appropriate
-    4. Maintains a friendly and supportive tone
-    
-    Response:`;
+    // Get user's profile ID
+    const profiles = await db.query<UserProfile[]>(
+      'SELECT id, monthly_income, monthly_expenses, financial_goal, risk_tolerance, investment_experience, existing_investments, preferred_investment_types FROM user_profiles WHERE clerk_id = ?',
+      [userId]
+    );
 
-    // Generate response
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    if (!profiles || profiles.length === 0) {
+      console.log('No profile found for user:', userId);
+      return new NextResponse(
+        JSON.stringify({ error: 'Profile not found. Please complete your profile first.' }),
+        { status: 404 }
+      );
+    }
 
-    return NextResponse.json({ response: text });
+    const profile = profiles[0];
+    console.log('Found user profile:', profile.id);
+
+    // Prepare context for the AI
+    const context = profile ? `
+      User Profile:
+      - Monthly Income: ₹${profile.monthly_income}
+      - Monthly Expenses: ₹${profile.monthly_expenses}
+      - Financial Goal: ${profile.financial_goal}
+      - Risk Tolerance: ${profile.risk_tolerance}
+      - Investment Experience: ${profile.investment_experience}
+      - Existing Investments: ${profile.existing_investments}
+      - Preferred Investment Types: ${profile.preferred_investment_types}
+    ` : '';
+
+    // Save user message to database
+    await db.query(
+      'INSERT INTO chat_history (user_id, message, is_ai) VALUES (?, ?, ?)',
+      [profile.id, message, false]
+    );
+    console.log('Saved user message to database');
+
+    try {
+      // Initialize the model with the correct model name and configuration
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
+          temperature: 0.7,
+          topP: 0.8,
+          topK: 40,
+          maxOutputTokens: 2048,
+        },
+      });
+      console.log('Initialized Gemini model');
+
+      // Create a chat instance
+      const chat = model.startChat({
+        history: [],
+        generationConfig: {
+          maxOutputTokens: 2048,
+        },
+      });
+
+      // Create a comprehensive prompt for the financial AI assistant
+      const prompt = `
+        ${context}
+        
+        User Question: ${message}
+        
+        Please structure your response in the following format:
+
+        [SUMMARY]
+        Provide exactly 5 lines that summarize the key points of your response. Each line should be a complete thought and end with a period.
+
+        [DETAILS]
+        After the summary, provide detailed information in bullet points, organized by category if applicable. Use the following format:
+        • Main point 1
+        • Main point 2
+          - Sub-point 2.1
+          - Sub-point 2.2
+        • Main point 3
+
+        Guidelines:
+        1. Keep the summary concise and actionable
+        2. Use clear, simple language
+        3. Focus on practical advice
+        4. Include specific numbers or percentages when relevant
+        5. Ensure bullet points are properly indented and formatted
+      `;
+
+      // Generate response
+      console.log('Generating AI response');
+      const result = await chat.sendMessage(prompt);
+      const response = await result.response;
+      const text = response.text();
+      console.log('Generated AI response');
+
+      // Process the response to ensure proper formatting
+      const processedText = text
+        .replace(/\[SUMMARY\]/g, '')
+        .replace(/\[DETAILS\]/g, '')
+        .trim()
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .join('\n');
+
+      // Save AI response to database
+      await db.query(
+        'INSERT INTO chat_history (user_id, message, is_ai) VALUES (?, ?, ?)',
+        [profile.id, processedText, true]
+      );
+      console.log('Saved AI response to database');
+
+      return NextResponse.json({ message: processedText });
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      throw new Error('Failed to generate AI response: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   } catch (error) {
     console.error('Error in chat API:', error);
+    
+    // Handle specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        console.error('API key error:', error.message);
+        return new NextResponse(
+          JSON.stringify({ 
+            error: 'Service Configuration Error',
+            details: 'AI service is not properly configured'
+          }), 
+          { 
+            status: 503,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      }
+      if (error.message.includes('database')) {
+        console.error('Database error:', error.message);
+        return new NextResponse(
+          JSON.stringify({ 
+            error: 'Database Error',
+            details: 'Failed to save or retrieve messages'
+          }), 
+          { 
+            status: 500,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      }
+    }
+
     return new NextResponse(
       JSON.stringify({ 
         error: 'Internal Server Error',

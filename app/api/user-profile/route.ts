@@ -1,54 +1,77 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs';
-import db from '@/lib/db';
+import { db } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
+    
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const data = await req.json();
-    
-    // Check if profile already exists
-    const existingProfile = await db.query(
-      'SELECT * FROM user_profiles WHERE clerk_id = ?',
-      [userId]
-    );
+    const body = await req.json();
+    const {
+      full_name,
+      age,
+      monthly_income,
+      financial_goal,
+      risk_tolerance,
+      occupation,
+      investment_experience,
+      existing_investments,
+      monthly_expenses,
+      dependents,
+      preferred_investment_types,
+    } = body;
 
-    if (Array.isArray(existingProfile) && existingProfile.length > 0) {
+    // Validate required fields
+    if (!full_name || !age || !monthly_income || !financial_goal || !risk_tolerance || !occupation) {
       return new NextResponse(
-        JSON.stringify({ error: 'Profile already exists' }),
-        { status: 409 }
+        JSON.stringify({ error: 'Missing required fields' }),
+        { status: 400 }
       );
     }
 
-    // Insert new user profile
-    await db.query(
+    // Convert numeric strings to numbers
+    const numericAge = parseInt(age);
+    const numericIncome = parseFloat(monthly_income);
+    const numericExpenses = monthly_expenses ? parseFloat(monthly_expenses) : 0;
+    const numericDependents = dependents ? parseInt(dependents) : 0;
+
+    // Insert user profile
+    const result = await db.query(
       `INSERT INTO user_profiles (
         clerk_id,
         full_name,
         age,
-        location,
         monthly_income,
         financial_goal,
         risk_tolerance,
-        created_at,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        occupation,
+        investment_experience,
+        existing_investments,
+        monthly_expenses,
+        dependents,
+        preferred_investment_types
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
-        data.full_name,
-        data.age,
-        data.location,
-        data.monthly_income,
-        data.financial_goal,
-        data.risk_tolerance,
+        full_name,
+        numericAge,
+        numericIncome,
+        financial_goal,
+        risk_tolerance,
+        occupation,
+        investment_experience || null,
+        existing_investments || null,
+        numericExpenses,
+        numericDependents,
+        preferred_investment_types || null,
       ]
     );
 
-    return NextResponse.json({ message: 'Profile created successfully' });
+    return NextResponse.json({ success: true, message: 'Profile created successfully' });
   } catch (error) {
     console.error('Error creating profile:', error);
     return new NextResponse(
@@ -64,48 +87,72 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { userId } = await auth();
+    
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const data = await req.json();
-    
-    // Check if profile exists
-    const existingProfile = await db.query(
-      'SELECT * FROM user_profiles WHERE clerk_id = ?',
-      [userId]
-    );
+    const body = await req.json();
+    const {
+      full_name,
+      age,
+      monthly_income,
+      financial_goal,
+      risk_tolerance,
+      occupation,
+      investment_experience,
+      existing_investments,
+      monthly_expenses,
+      dependents,
+      preferred_investment_types,
+    } = body;
 
-    if (!Array.isArray(existingProfile) || existingProfile.length === 0) {
+    // Validate required fields
+    if (!full_name || !age || !monthly_income || !financial_goal || !risk_tolerance || !occupation) {
       return new NextResponse(
-        JSON.stringify({ error: 'Profile not found' }),
-        { status: 404 }
+        JSON.stringify({ error: 'Missing required fields' }),
+        { status: 400 }
       );
     }
 
-    // Update existing user profile
-    await db.query(
+    // Convert numeric strings to numbers
+    const numericAge = parseInt(age);
+    const numericIncome = parseFloat(monthly_income);
+    const numericExpenses = monthly_expenses ? parseFloat(monthly_expenses) : 0;
+    const numericDependents = dependents ? parseInt(dependents) : 0;
+
+    // Update user profile
+    const result = await db.query(
       `UPDATE user_profiles SET
         full_name = ?,
         age = ?,
-        location = ?,
         monthly_income = ?,
         financial_goal = ?,
         risk_tolerance = ?,
-        updated_at = NOW()
+        occupation = ?,
+        investment_experience = ?,
+        existing_investments = ?,
+        monthly_expenses = ?,
+        dependents = ?,
+        preferred_investment_types = ?
       WHERE clerk_id = ?`,
       [
-        data.full_name,
-        data.age,
-        data.location,
-        data.monthly_income,
-        data.financial_goal,
-        data.risk_tolerance,
+        full_name,
+        numericAge,
+        numericIncome,
+        financial_goal,
+        risk_tolerance,
+        occupation,
+        investment_experience || null,
+        existing_investments || null,
+        numericExpenses,
+        numericDependents,
+        preferred_investment_types || null,
         userId,
       ]
     );
 
-    return NextResponse.json({ message: 'Profile updated successfully' });
+    return NextResponse.json({ success: true, message: 'Profile updated successfully' });
   } catch (error) {
     console.error('Error updating profile:', error);
     return new NextResponse(
@@ -113,6 +160,35 @@ export async function PUT(req: Request) {
         error: 'Failed to update profile',
         details: error instanceof Error ? error.message : 'Unknown error'
       }),
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const [profile] = await db.query(
+      'SELECT * FROM user_profiles WHERE clerk_id = ?',
+      [userId]
+    );
+
+    if (!profile) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Profile not found' }),
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(profile);
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    return new NextResponse(
+      JSON.stringify({ error: 'Failed to fetch profile' }),
       { status: 500 }
     );
   }

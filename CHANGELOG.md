@@ -16,7 +16,7 @@
 - API routes for creating and updating user profiles
 
 ### Changed
-- Updated application name from "Invest Sathi" to "Wealth CompanionAI"
+- Updated application name from "Wealth CompanionAI" to "Wealth CompanionAI"
 - Fixed speech-to-text API configuration
 - Updated welcome page layout and messaging
 - Removed duplicate welcome header from page.tsx (kept in WelcomeForm component)

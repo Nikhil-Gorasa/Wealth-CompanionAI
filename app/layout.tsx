@@ -38,7 +38,7 @@ export default function RootLayout({
             disableTransitionOnChange
             storageKey="wealth-companion-theme"
           >
-            <header className="fixed top-0 w-full border-b bg-background/80 backdrop-blur-sm">
+            <header className="fixed top-0 w-full border-b bg-background/80 backdrop-blur-sm z-[100] shadow-sm">
               <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl font-bold text-primary">WealthCompanion AI</span>

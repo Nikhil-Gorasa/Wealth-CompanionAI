@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs';
-import speech from '@google-cloud/speech';
-import { protos } from '@google-cloud/speech';
 
-// Initialize Speech-to-Text client
-const speechClient = new speech.SpeechClient({
-  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-});
+// The API endpoint for Google Cloud Speech-to-Text
+const SPEECH_TO_TEXT_URL = 'https://speech.googleapis.com/v1/speech:recognize';
 
 export async function POST(req: Request) {
   try {
@@ -28,44 +24,54 @@ export async function POST(req: Request) {
       size: audioFile.size,
     });
 
-    // Convert Blob to Buffer
+    // Convert Blob to Base64
     const buffer = Buffer.from(await audioFile.arrayBuffer());
+    const base64Audio = buffer.toString('base64');
 
-    // Configure the request
-    const audio = {
-      content: buffer.toString('base64'),
-    };
-
-    const config: protos.google.cloud.speech.v1.IRecognitionConfig = {
-      encoding: 'WEBM_OPUS' as const,
-      sampleRateHertz: 48000,
-      languageCode: 'en-IN',
-      model: 'default',
-      useEnhanced: true,
-      enableAutomaticPunctuation: true,
-      metadata: {
-        recordingDeviceType: 'PC' as const,
-        recordingDeviceName: 'browser',
+    // Prepare the request body
+    const requestBody = {
+      config: {
+        encoding: 'WEBM_OPUS',
+        sampleRateHertz: 48000,
+        languageCode: 'en-IN',
+        model: 'default',
+        useEnhanced: true,
+        enableAutomaticPunctuation: true,
+      },
+      audio: {
+        content: base64Audio,
       },
     };
 
-    const request: protos.google.cloud.speech.v1.IRecognizeRequest = {
-      audio: audio,
-      config: config,
-    };
-
     console.log('Sending request to Google Cloud Speech-to-Text');
+
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('Google API key is not configured');
+    }
+
+    // Make the API request
+    const response = await fetch(`${SPEECH_TO_TEXT_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to transcribe audio');
+    }
+
+    const data = await response.json();
     
-    // Perform the transcription
-    const [response] = await speechClient.recognize(request);
-    
-    if (!response.results || response.results.length === 0) {
+    if (!data.results || data.results.length === 0) {
       throw new Error('No transcription results received');
     }
 
-    const transcription = response.results
-      .map((result: protos.google.cloud.speech.v1.ISpeechRecognitionResult) => 
-        result.alternatives?.[0]?.transcript)
+    const transcription = data.results
+      .map((result: any) => result.alternatives?.[0]?.transcript)
       .filter(Boolean)
       .join('\n');
 
@@ -77,11 +83,11 @@ export async function POST(req: Request) {
     
     // Check for specific error types
     if (error instanceof Error) {
-      if (error.message.includes('credentials')) {
+      if (error.message.includes('API key')) {
         return new NextResponse(
           JSON.stringify({ 
             error: 'Authentication Error',
-            details: 'Invalid Google Cloud credentials. Please check your configuration.'
+            details: 'Invalid Google Cloud API key. Please check your configuration.'
           }), 
           { status: 401 }
         );

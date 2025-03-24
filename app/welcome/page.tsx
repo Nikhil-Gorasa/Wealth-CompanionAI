@@ -1,11 +1,10 @@
 import { auth } from '@clerk/nextjs';
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
 import { WelcomeForm } from '@/components/welcome-form';
-import db from '@/lib/db';
+import { db } from '@/lib/db';
 
 export default async function WelcomePage() {
-  const { userId } = await auth();
+  const { userId } = auth();
   
   if (!userId) {
     redirect('/sign-in');
@@ -18,16 +17,11 @@ export default async function WelcomePage() {
       [userId]
     );
 
-    // If user profile exists, redirect to dashboard
-    if (Array.isArray(userProfile) && userProfile.length > 0) {
+    if (userProfile && Array.isArray(userProfile) && userProfile.length > 0) {
       redirect('/dashboard');
     }
   } catch (error) {
-    if (error instanceof Error && error.message === 'NEXT_REDIRECT') {
-      throw error; // Let Next.js handle the redirect
-    }
     console.error('Error checking user profile:', error);
-    // Continue to show the welcome form even if there's a DB error
   }
 
   return (
