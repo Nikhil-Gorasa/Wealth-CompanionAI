@@ -1,0 +1,80 @@
+-- Create the database if it doesn't exist
+CREATE DATABASE IF NOT EXISTS wealth_companion;
+USE wealth_companion;
+
+-- Create user_profiles table
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  clerk_id VARCHAR(255) NOT NULL UNIQUE,
+  full_name VARCHAR(255) NOT NULL,
+  age INT NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  occupation VARCHAR(255) NOT NULL,
+  monthly_income DECIMAL(15,2) NOT NULL,
+  monthly_expenses DECIMAL(15,2) NOT NULL,
+  dependents INT NOT NULL DEFAULT 0,
+  financial_goal ENUM(
+    'retirement_planning',
+    'investment_growth',
+    'emergency_savings',
+    'debt_management',
+    'education_funding',
+    'home_purchase'
+  ) NOT NULL,
+  risk_tolerance ENUM(
+    'conservative',
+    'moderate',
+    'aggressive'
+  ) NOT NULL,
+  investment_experience ENUM(
+    'none',
+    'beginner',
+    'intermediate',
+    'experienced'
+  ) NOT NULL,
+  existing_investments ENUM(
+    'none',
+    'stocks',
+    'mutual_funds',
+    'fixed_deposits',
+    'real_estate',
+    'multiple'
+  ) NOT NULL,
+  preferred_investment_types ENUM(
+    'stocks',
+    'mutual_funds',
+    'fixed_income',
+    'real_estate',
+    'crypto',
+    'mixed'
+  ) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_clerk_id (clerk_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create chat_history table
+CREATE TABLE IF NOT EXISTS chat_history (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  is_user BOOLEAN NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES user_profiles(clerk_id),
+  INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create financial_goals table for tracking progress
+CREATE TABLE IF NOT EXISTS financial_goals (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  goal_type VARCHAR(50) NOT NULL,
+  target_amount DECIMAL(15,2) NOT NULL,
+  current_amount DECIMAL(15,2) DEFAULT 0,
+  target_date DATE,
+  status ENUM('in_progress', 'completed', 'cancelled') DEFAULT 'in_progress',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES user_profiles(clerk_id),
+  INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
