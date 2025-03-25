@@ -16,8 +16,11 @@ interface UserProfile extends RowDataPacket {
   preferred_investment_types: string;
 }
 
-// Initialize Gemini with the API key
-const GEMINI_API_KEY = 'AIzaSyAY50OhvTmvBnnOrBh24l2LOHfQZurGxgg';
+// Initialize Gemini AI
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
+  throw new Error('GEMINI_API_KEY is not set in environment variables');
+}
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export async function POST(req: Request) {
@@ -81,7 +84,7 @@ export async function POST(req: Request) {
       const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash",
         generationConfig: {
-          temperature: 0.7,
+          temperature: 0.9,
           topP: 0.8,
           topK: 40,
           maxOutputTokens: 2048,
